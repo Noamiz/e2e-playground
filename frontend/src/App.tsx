@@ -1,13 +1,10 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import styles from "./App.module.scss";
+import { fetchMockItems, type ApiItem, type SortMode } from "./api/mockApi";
 
-type Item = {
-  id: string;
-  text: string;
-  createdAt: number;
-};
+type Item = ApiItem;
 
-type SortMode = "newest" | "oldest";
+const PAGE_SIZE = 25;
 
 function uid() {
   return crypto.randomUUID();
@@ -21,15 +18,30 @@ function validateText(nextText: string): string | null {
 }
 
 export default function App() {
-  const [items, setItems] = useState<Item[]>([]);
+  const [userItems, setUserItems] = useState<Item[]>([]);
+  const [remoteItems, setRemoteItems] = useState<Item[]>([]);
   const [text, setText] = useState("");
   const [filter, setFilter] = useState("");
 
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sort, setSort] = useState<SortMode>("newest");
+  const [isPageLoading, setIsPageLoading] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [remoteLoaded, setRemoteLoaded] = useState(0);
+  const [remoteTotal, setRemoteTotal] = useState<number | null>(null);
 
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const isLoadingRef = useRef(false);
+  const offsetRef = useRef(0);
+  const totalRef = useRef<number | null>(null);
+
+  const items = useMemo(
+    () => [...userItems, ...remoteItems],
+    [userItems, remoteItems]
+  );
   const canSubmit = !isSaving && !error && text.trim().length >= 3;
+  const hasMore = remoteTotal === null || remoteLoaded < remoteTotal;
 
   const visibleItems = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -47,6 +59,67 @@ export default function App() {
     });
   }, [items, filter, sort]);
 
+  const loadPage = useCallback(async () => {
+    if (isLoadingRef.current) return;
+
+    const offset = offsetRef.current;
+    const knownTotal = totalRef.current;
+    if (knownTotal !== null && offset >= knownTotal) return;
+
+    isLoadingRef.current = true;
+    setIsPageLoading(true);
+
+    try {
+      const { items: page, total } = await fetchMockItems({
+        offset,
+        limit: PAGE_SIZE,
+        sort,
+      });
+
+      offsetRef.current = offset + page.length;
+      totalRef.current = total;
+      setRemoteItems((prev) => (offset === 0 ? page : [...prev, ...page]));
+      setRemoteLoaded(offsetRef.current);
+      setRemoteTotal(total);
+      setApiError(null);
+    } catch (err) {
+      console.error(err);
+      setApiError("Failed to load items. Please retry.");
+    } finally {
+      isLoadingRef.current = false;
+      setIsPageLoading(false);
+    }
+  }, [sort]);
+
+  useEffect(() => {
+    offsetRef.current = 0;
+    totalRef.current = null;
+    setRemoteItems([]);
+    setRemoteLoaded(0);
+    setRemoteTotal(null);
+    setApiError(null);
+    void loadPage();
+  }, [loadPage]);
+
+  useEffect(() => {
+    const node = loadMoreRef.current;
+    if (!node) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            void loadPage();
+          }
+        });
+      },
+      { rootMargin: "200px" }
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [loadPage]);
+
   function addItem() {
     if (!canSubmit) return;
 
@@ -54,10 +127,13 @@ export default function App() {
     setIsSaving(true);
 
     setTimeout(() => {
-      setItems((prev) => [
-        { id: uid(), text: value, createdAt: Date.now() },
-        ...prev,
-      ]);
+      setUserItems((prev) => {
+        const seqBase = (totalRef.current ?? 0) + prev.length + 1;
+        return [
+          { id: uid(), text: value, createdAt: Date.now(), seq: seqBase },
+          ...prev,
+        ];
+      });
       setText("");
       setError(null);
       setIsSaving(false);
@@ -65,7 +141,8 @@ export default function App() {
   }
 
   function removeItem(id: string) {
-    setItems((prev) => prev.filter((i) => i.id !== id));
+    setUserItems((prev) => prev.filter((i) => i.id !== id));
+    setRemoteItems((prev) => prev.filter((i) => i.id !== id));
   }
 
   return (
@@ -101,9 +178,18 @@ export default function App() {
         >
           Sort: {sort === "newest" ? "Newest" : "Oldest"}
         </button>
+
+        <button
+          className={styles.button}
+          onClick={() => void loadPage()}
+          disabled={!hasMore || isPageLoading}
+        >
+          {isPageLoading ? "Loading..." : hasMore ? "Load more" : "All loaded"}
+        </button>
       </div>
 
       {error && <div className={styles.error}>{error}</div>}
+      {apiError && <div className={styles.error}>{apiError}</div>}
 
       <div className={styles.row}>
         <input
@@ -115,19 +201,33 @@ export default function App() {
       </div>
 
       <div className={styles.meta}>
-        Showing {visibleItems.length} / {items.length}
+        Showing {visibleItems.length} / {items.length} (loaded {remoteLoaded}
+        {remoteTotal !== null ? ` of ${remoteTotal}` : ""} from mock API)
       </div>
 
-      <ul className={styles.list}>
-        {visibleItems.map((i) => (
-          <li key={i.id} className={styles.listItem}>
-            {i.text}{" "}
-            <button className={styles.button} onClick={() => removeItem(i.id)}>
-              remove
-            </button>
-          </li>
-        ))}
-      </ul>
+      <div className={styles.listContainer}>
+        <ul className={styles.list}>
+          {visibleItems.map((i) => (
+            <li key={i.id} className={styles.listItem}>
+              <span className={styles.badge}>#{i.seq}</span>
+              <span className={styles.listText}>{i.text}</span>
+              <button
+                className={styles.button}
+                onClick={() => removeItem(i.id)}
+              >
+                remove
+              </button>
+            </li>
+          ))}
+        </ul>
+        <div ref={loadMoreRef} className={styles.loader}>
+          {isPageLoading
+            ? "Loading more..."
+            : hasMore
+            ? "Scroll for more items"
+            : "Reached the end of the mock list"}
+        </div>
+      </div>
     </div>
   );
 }
