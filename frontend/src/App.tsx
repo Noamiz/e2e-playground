@@ -1,35 +1,83 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useMemo, useState } from "react";
+import styles from "./App.module.scss";
 
-function App() {
-  const [count, setCount] = useState(0)
+type Item = {
+  id: string;
+  text: string;
+  createdAt: number;
+};
 
-  return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+function uid() {
+  return crypto.randomUUID();
 }
 
-export default App
+export default function App() {
+  const [items, setItems] = useState<Item[]>([]);
+  const [text, setText] = useState("");
+  const [filter, setFilter] = useState("");
+
+  const filtered = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((i) => i.text.toLowerCase().includes(q));
+  }, [items, filter]);
+
+  function addItem() {
+    const value = text.trim();
+    if (!value) return;
+    setItems((prev) => [
+      { id: uid(), text: value, createdAt: Date.now() },
+      ...prev,
+    ]);
+    setText("");
+  }
+
+  function removeItem(id: string) {
+    setItems((prev) => prev.filter((i) => i.id !== id));
+  }
+
+  return (
+    <div className={styles.container}>
+      <h1 className={styles.title}>Live Coding Playground</h1>
+
+      <div className={styles.row}>
+        <input
+          className={styles.input}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Add item..."
+          onKeyDown={(e) => {
+            if (e.key === "Enter") addItem();
+          }}
+        />
+        <button className={styles.button} onClick={addItem}>
+          Add
+        </button>
+      </div>
+
+      <div className={styles.row}>
+        <input
+          className={styles.input}
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder="Filter..."
+        />
+      </div>
+
+      <div className={styles.meta}>
+        Showing {filtered.length} / {items.length}
+      </div>
+
+      <ul className={styles.list}>
+        {filtered.map((i) => (
+          <li key={i.id} className={styles.listItem}>
+            {i.text}{" "}
+            <button className={styles.button} onClick={() => removeItem(i.id)}>
+              remove
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}

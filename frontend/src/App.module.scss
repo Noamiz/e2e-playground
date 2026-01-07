@@ -1,0 +1,48 @@
+.container {
+  padding: 24px;
+  font-family: system-ui, Arial, sans-serif;
+}
+
+.title {
+  margin-top: 0;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  align-items: center;
+}
+
+.input {
+  padding: 6px 8px;
+}
+
+.button {
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.meta {
+  opacity: 0.8;
+  margin-bottom: 8px;
+}
+
+.list {
+  padding-left: 18px;
+}
+
+.listItem {
+  margin-bottom: 6px;
+}
+
+.error {
+  color: crimson;
+  margin-top: -6px;
+  margin-bottom: 12px;
+}
