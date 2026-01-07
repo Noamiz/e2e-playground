@@ -56,3 +56,7 @@ yarn ts-node prisma/seed.ts
 npx @nestjs/cli g module messages
 npx @nestjs/cli g controller messages --no-spec
 npx @nestjs/cli g service messages --no-spec
+
+### if git issue conflicts internal and root
+
+rm -rf .git
